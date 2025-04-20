@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Fixed Animation Tiger</title>
+    <style>
+        body { margin: 0; }
+        #ui { 
+            position: fixed; 
+            top: 10px; 
+            left: 10px;
+            background: rgba(255,255,255,0.8);
+            padding: 10px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <select id="animSelector" disabled>
+            <option value="">选择动画</option>
+        </select>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+
+    <script>
+        // 初始化核心组件
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setClearColor(0x666666); // 灰色背景
+        document.body.appendChild(renderer.domElement);
+
+        // 动画控制变量
+        let mixer = null;
+        let currentAction = null;
+        let animations = {};
+        const clock = new THREE.Clock(); // 移出animate函数
+
+        // 初始化控制器
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        // 增强光照系统
+        const ambientLight = new THREE.AmbientLight(0xffffff, 2.0);
+        scene.add(ambientLight);
+        
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 2.0);
+        directionalLight.position.set(3, 5, 2).normalize();
+        directionalLight.castShadow = true;
+        scene.add(directionalLight);
+
+        // 加载模型
+        new THREE.GLTFLoader().load(
+            './animated_siberian_tiger_3d_model/scene.gltf',
+            (gltf) => {
+                const model = gltf.scene;
+                scene.add(model);
+
+                // 初始化动画系统（关键修改1：确保只初始化一次）
+                if (!mixer) {
+                    mixer = new THREE.AnimationMixer(model);
+                    
+                    // 获取所有动画片段
+                    gltf.animations.forEach((clip) => {
+                        animations[clip.name] = clip;
+                        const option = document.createElement('option');
+                        option.value = clip.name;
+                        option.textContent = clip.name;
+                        document.getElementById('animSelector').appendChild(option);
+                    });
+
+                    // 自动播放第一个动画
+                    if (gltf.animations.length > 0) {
+                        playAnimation(gltf.animations[0].name);
+                    }
+                }
+
+                // 调整模型位置
+                const box = new THREE.Box3().setFromObject(model);
+                const center = box.getCenter(new THREE.Vector3());
+                model.position.sub(center);
+                camera.position.copy(center).add(new THREE.Vector3(0, 0, 5));
+                controls.update();
+                
+                // 激活下拉菜单
+                document.getElementById('animSelector').disabled = false;
+            },
+            undefined,
+            (err) => console.error(err)
+        );
+
+        // 修正后的动画播放函数（关键修改2）
+        function playAnimation(name) {
+            if (!animations[name]) return;
+            
+            // 停止当前动画（如果有）
+            if (currentAction) {
+                currentAction.stop(); // 直接停止而不是淡出
+            }
+            
+            // 创建新动画动作
+            currentAction = mixer.clipAction(animations[name]);
+            currentAction.reset(); // 重置动画状态
+            currentAction
+                .setEffectiveTimeScale(1)
+                .setLoop(THREE.LoopRepeat, Infinity)
+                .play();
+        }
+
+        // UI事件监听
+        document.getElementById('animSelector').addEventListener('change', (e) => {
+            if (e.target.value) {
+                playAnimation(e.target.value);
+            }
+        });
+
+        // 动画循环（关键修改3：确保deltaTime正确传递）
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            const delta = clock.getDelta();
+            if (mixer) mixer.update(delta); // 确保使用统一的clock
+            
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // 窗口响应
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
